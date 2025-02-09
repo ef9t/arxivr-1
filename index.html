@@ -13,6 +13,8 @@
             --border-color: #eff3f4;
             --hover-bg: rgba(0, 0, 0, 0.03);
             --sidebar-hover: rgba(15, 20, 25, 0.1);
+            --input-bg: #fff;
+            --input-border: #cfd9de;
         }
 
         :root[data-theme="dark"] {
@@ -22,6 +24,8 @@
             --border-color: #2f3336;
             --hover-bg: rgba(255, 255, 255, 0.03);
             --sidebar-hover: #181818;
+            --input-bg: #000;
+            --input-border: #333639;
         }
 
         * {
@@ -95,6 +99,55 @@
             background-color: var(--sidebar-hover);
         }
 
+        /* Teleport Form */
+        .teleport-form {
+            padding: 0 20px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .teleport-form.active {
+            display: block;
+        }
+
+        .teleport-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid var(--input-border);
+            border-radius: 20px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            margin-bottom: 10px;
+            font-size: 15px;
+            transition: border-color 0.2s;
+        }
+
+        .teleport-input:focus {
+            outline: none;
+            border-color: #1d9bf0;
+        }
+
+        .teleport-button {
+            width: 100%;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 20px;
+            background-color: #181818;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .teleport-button:hover {
+            background-color: #383838;
+        }
+
+        .teleport-button:active {
+            background-color: #383838;
+        }
+
         /* Main Content */
         .main-content {
             margin-left: 275px;
@@ -111,10 +164,22 @@
             transition: background-color 0.2s;
             display: flex;
             gap: 12px;
+            position: relative;
         }
 
         .paper:hover {
             background-color: var(--hover-bg);
+        }
+
+        .post-number {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: var(--secondary-text);
+            font-size: 14px;
+            background-color: var(--hover-bg);
+            padding: 4px 8px;
+            border-radius: 12px;
         }
 
         .profile-picture {
@@ -132,6 +197,7 @@
             font-size: 18px;
             margin-bottom: 10px;
             color: var(--text-color);
+            padding-right: 40px;
         }
 
         .paper-authors {
@@ -219,6 +285,13 @@
         <a href="#" class="nav-item" data-tab="saved">
             <i class="fas fa-bookmark"></i> Saved
         </a>
+        <a href="#" class="nav-item" data-tab="teleport">
+            <i class="fas fa-rocket"></i> Teleport
+        </a>
+        <div class="teleport-form" id="teleport-form">
+            <input type="number" class="teleport-input" id="teleport-input" placeholder="Enter post number">
+            <button class="teleport-button" onclick="teleportToPost()">Go to Post</button>
+        </div>
         <button class="theme-toggle" onclick="toggleTheme()">
             <i class="fas fa-moon"></i>
         </button>
@@ -299,7 +372,7 @@
                 return createPaperHtml(paperData, true);
             }).join('');
             
-            container.innerHTML = savedHtml || '<div class="paper">No saved papers yet</div>';
+            container.innerHTML = savedHtml || '<div class="paper">No saved papers yet . Like a paper in your feed to save a paper . </div>';
         }
 
         function createPaperHtml(paper, isSaved = false) {
@@ -312,6 +385,7 @@
             
             return `
                 <div class="paper">
+                    <div class="post-number">#${paper.postNumber}</div>
                     <div class="profile-picture" style="background: ${gradient}"></div>
                     <div class="paper-content">
                         <h2>${paper.title}</h2>
@@ -364,7 +438,8 @@
                         authors: Array.from(entry.getElementsByTagName("author"))
                             .map(author => author.getElementsByTagName("name")[0].textContent)
                             .join(", "),
-                        gradient: generateGradient()
+                        gradient: generateGradient(),
+                        postNumber: startIndex + Array.from(entries).indexOf(entry)
                     };
                     
                     localStorage.setItem(`paper_${paperData.id}`, JSON.stringify(paperData));
@@ -388,6 +463,32 @@
             }
         }
 
+        // Teleport functionality
+        function teleportToPost() {
+            const postNumber = parseInt(document.getElementById('teleport-input').value);
+            if (isNaN(postNumber) || postNumber < 0) {
+                alert('Please enter a valid post number');
+                return;
+            }
+
+            // Reset everything
+            startIndex = postNumber;
+            document.getElementById('papers-container').innerHTML = '';
+            
+            // Switch to feed tab
+            currentTab = 'feed';
+            document.querySelectorAll('.nav-item').forEach(nav => {
+                nav.classList.remove('active');
+            });
+            document.querySelector('[data-tab="feed"]').classList.add('active');
+            
+            // Hide teleport form
+            document.getElementById('teleport-form').classList.remove('active');
+            
+            // Fetch papers starting from the specified index
+            fetchPapers();
+        }
+
         // Tab switching
         document.querySelectorAll('.nav-item').forEach(item => {
             item.addEventListener('click', (e) => {
@@ -398,6 +499,15 @@
                     nav.classList.remove('active');
                 });
                 e.target.closest('.nav-item').classList.add('active');
+                
+                // Toggle teleport form
+                const teleportForm = document.getElementById('teleport-form');
+                if (tab === 'teleport') {
+                    teleportForm.classList.add('active');
+                    return; // Don't clear content when showing teleport form
+                } else {
+                    teleportForm.classList.remove('active');
+                }
                 
                 currentTab = tab;
                 document.getElementById('papers-container').innerHTML = '';
@@ -420,6 +530,13 @@
             if (currentTab === 'feed' && 
                 (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
                 fetchPapers();
+            }
+        });
+
+        // Add enter key support for teleport input
+        document.getElementById('teleport-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                teleportToPost();
             }
         });
     </script>
