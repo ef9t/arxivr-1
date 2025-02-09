@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArXiv Social</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #000;
+            color: #e7e9ea;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 275px;
+            padding: 20px;
+            position: fixed;
+            height: 100vh;
+            border-right: 1px solid #2f3336;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 30px;
+            color: #e7e9ea;
+        }
+
+        .nav-item {
+            padding: 15px 20px;
+            font-size: 20px;
+            margin: 5px 0;
+            cursor: pointer;
+            border-radius: 30px;
+            transition: background-color 0.2s;
+            color: #e7e9ea;
+            text-decoration: none;
+            display: block;
+        }
+
+        .nav-item:hover {
+            background-color: #181818;
+        }
+
+        .nav-item.active {
+            font-weight: bold;
+            background-color: #181818;
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 275px;
+            flex: 1;
+            border-right: 1px solid #2f3336;
+            min-width: 600px;
+            max-width: 800px;
+        }
+
+        /* Paper Card */
+        .paper {
+            padding: 20px;
+            border-bottom: 1px solid #2f3336;
+            transition: background-color 0.2s;
+        }
+
+        .paper:hover {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        .paper h2 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: #e7e9ea;
+        }
+
+        .paper-authors {
+            color: #71767b;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .paper-summary {
+            color: #e7e9ea;
+            margin-bottom: 15px;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .paper-actions {
+            display: flex;
+            gap: 20px;
+            color: #71767b;
+        }
+
+        .action-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: color 0.2s;
+            background: none;
+            border: none;
+            color: #71767b;
+            font-size: 14px;
+        }
+
+        .action-button:hover {
+            color: #f91880;
+        }
+
+        .action-button.liked {
+            color: #f91880;
+        }
+
+        .action-button i {
+            font-size: 18px;
+        }
+
+        .read-more {
+            color: #1d9bf0;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .read-more:hover {
+            text-decoration: underline;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #71767b;
+        }
+
+        /* Hide scrollbar but keep functionality */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            svg: { scale: 1.2 }
+        };
+    </script>
+    <script type="text/javascript" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="logo">ArXiv Social</div>
+        <a href="#" class="nav-item active" data-tab="feed">
+            <i class="fas fa-home"></i> Feed
+        </a>
+        <a href="#" class="nav-item" data-tab="saved">
+            <i class="fas fa-bookmark"></i> Saved
+        </a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div id="papers-container"></div>
+        <div class="loading" id="loading">Loading papers...</div>
+    </div>
+
+    <script>
+        let startIndex = 0;
+        let isLoading = false;
+        let currentTab = 'feed';
+        const papersPerPage = 10;
+        
+        // Load saved papers from localStorage
+        const savedPapers = JSON.parse(localStorage.getItem('savedPapers') || '[]');
+
+        function toggleLike(paperId) {
+            const likeButton = document.querySelector(`[data-paper-id="${paperId}"]`);
+            const isLiked = savedPapers.includes(paperId);
+            
+            if (isLiked) {
+                const index = savedPapers.indexOf(paperId);
+                savedPapers.splice(index, 1);
+                likeButton.classList.remove('liked');
+            } else {
+                savedPapers.push(paperId);
+                likeButton.classList.add('liked');
+            }
+            
+            localStorage.setItem('savedPapers', JSON.stringify(savedPapers));
+            
+            // If we're on the saved tab, refresh the view
+            if (currentTab === 'saved') {
+                displaySavedPapers();
+            }
+        }
+
+        function displaySavedPapers() {
+            const container = document.getElementById('papers-container');
+            container.innerHTML = '';
+            
+            const savedHtml = savedPapers.map(paperId => {
+                const paperData = JSON.parse(localStorage.getItem(`paper_${paperId}`));
+                if (!paperData) return '';
+                
+                return createPaperHtml(paperData, true);
+            }).join('');
+            
+            container.innerHTML = savedHtml || '<div class="paper">No saved papers yet</div>';
+        }
+
+        function createPaperHtml(paper, isSaved = false) {
+            const isLiked = savedPapers.includes(paper.id);
+            return `
+                <div class="paper">
+                    <h2>${paper.title}</h2>
+                    <p class="paper-authors">${paper.authors}</p>
+                    <p class="paper-summary">${paper.summary}</p>
+                    <div class="paper-actions">
+                        <button class="action-button ${isLiked ? 'liked' : ''}" 
+                                onclick="toggleLike('${paper.id}')"
+                                data-paper-id="${paper.id}">
+                            <i class="fas fa-heart"></i>
+                            <span>Like</span>
+                        </button>
+                        <a href="${paper.link}" target="_blank" class="read-more">
+                            Read on arXiv <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function fetchPapers() {
+            if (isLoading || currentTab === 'saved') return;
+            
+            isLoading = true;
+            document.getElementById('loading').style.display = 'block';
+            
+            const apiUrl = `https://export.arxiv.org/api/query?search_query=all&start=${startIndex}&max_results=${papersPerPage}`;
+            
+            try {
+                const response = await fetch(apiUrl);
+                const text = await response.text();
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(text, "text/xml");
+                const entries = xml.getElementsByTagName("entry");
+                
+                if (!entries.length) {
+                    document.getElementById("loading").innerHTML = "No more papers available.";
+                    return;
+                }
+                
+                let papersHtml = '';
+                
+                for (const entry of entries) {
+                    const paperData = {
+                        id: entry.getElementsByTagName("id")[0].textContent,
+                        title: entry.getElementsByTagName("title")[0].textContent,
+                        summary: entry.getElementsByTagName("summary")[0].textContent,
+                        link: entry.getElementsByTagName("id")[0].textContent,
+                        authors: Array.from(entry.getElementsByTagName("author"))
+                            .map(author => author.getElementsByTagName("name")[0].textContent)
+                            .join(", ")
+                    };
+                    
+                    // Store paper data in localStorage
+                    localStorage.setItem(`paper_${paperData.id}`, JSON.stringify(paperData));
+                    
+                    papersHtml += createPaperHtml(paperData);
+                }
+                
+                document.getElementById('papers-container').insertAdjacentHTML('beforeend', papersHtml);
+                
+                if (window.MathJax) {
+                    window.MathJax.typesetPromise();
+                }
+                
+                startIndex += papersPerPage;
+                
+            } catch (error) {
+                console.error("Error fetching papers:", error);
+                document.getElementById("loading").innerHTML = "Error loading papers. Please try again.";
+            } finally {
+                isLoading = false;
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // Tab switching
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                const tab = e.target.closest('.nav-item').dataset.tab;
+                
+                // Update active tab styling
+                document.querySelectorAll('.nav-item').forEach(nav => {
+                    nav.classList.remove('active');
+                });
+                e.target.closest('.nav-item').classList.add('active');
+                
+                // Update content
+                currentTab = tab;
+                document.getElementById('papers-container').innerHTML = '';
+                document.getElementById('loading').style.display = 'none';
+                
+                if (tab === 'feed') {
+                    startIndex = 0;
+                    fetchPapers();
+                } else if (tab === 'saved') {
+                    displaySavedPapers();
+                }
+            });
+        });
+        
+        // Initial load
+        fetchPapers();
+        
+        // Infinite scroll
+        window.addEventListener('scroll', () => {
+            if (currentTab === 'feed' && 
+                (window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
+                fetchPapers();
+            }
+        });
+    </script>
+</body>
+</html>
